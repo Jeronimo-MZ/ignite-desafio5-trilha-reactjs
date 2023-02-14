@@ -1,1 +1,10 @@
-// TODO
+.container {
+  background-color: var(--background);
+  padding: 0 2rem;
+}
+
+.content {
+  padding: 4rem 0;
+  max-width: 720px;
+  margin: 0 auto;
+}
