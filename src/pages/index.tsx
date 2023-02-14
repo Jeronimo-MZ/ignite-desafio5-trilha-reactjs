@@ -1,8 +1,11 @@
+import { useState } from 'react';
+import { format } from 'date-fns';
+
+import ptBR from 'date-fns/locale/pt-BR';
 import { GetStaticProps } from 'next';
 import Head from 'next/head';
 import Link from 'next/link';
 import { FiCalendar, FiUser } from 'react-icons/fi';
-import { posts as rawPosts } from '../data/posts';
 
 import { getPrismicClient } from '../services/prismic';
 
@@ -19,24 +22,33 @@ interface Post {
   };
 }
 
-interface FormattedPost {
-  slug: string;
-  createdAt: string;
-  title: string;
-  subtitle: string;
-  author: string;
-}
-
 interface PostPagination {
   next_page: string;
   results: Post[];
 }
 
 interface HomeProps {
-  posts: FormattedPost[];
+  postsPagination: PostPagination;
 }
 
-export default function Home({ posts }: HomeProps): JSX.Element {
+export default function Home({ postsPagination }: HomeProps): JSX.Element {
+  const [posts, setPosts] = useState(postsPagination.results);
+  const [nextPage, setNextPage] = useState(postsPagination.next_page);
+
+  const loadNextPage = async (): Promise<void> => {
+    if (nextPage === null) return;
+    const response = await fetch(nextPage).then(res => res.json());
+    setNextPage(response.next_page);
+    setPosts([...posts, ...response.results]);
+  };
+
+  const formattedPosts = posts.map(post => ({
+    slug: post.uid,
+    title: post.data.title,
+    subtitle: post.data.subtitle,
+    author: post.data.author,
+    createdAt: post.first_publication_date,
+  }));
   return (
     <>
       <Head>
@@ -44,15 +56,17 @@ export default function Home({ posts }: HomeProps): JSX.Element {
       </Head>
       <main className={styles.content}>
         <div className={styles.posts}>
-          {posts.map(post => (
+          {formattedPosts.map(post => (
             <Link href={`/post/${post.slug}`} key={post.slug}>
               <a className={styles.post}>
                 <strong>{post.title}</strong>
                 <p>{post.subtitle}</p>
-                <div className="info">
+                <div className={commonStyles.info}>
                   <time>
                     <FiCalendar />
-                    {post.createdAt}
+                    {format(new Date(post.createdAt), 'dd MMM yyyy', {
+                      locale: ptBR,
+                    })}
                   </time>
                   <span>
                     <FiUser />
@@ -63,27 +77,29 @@ export default function Home({ posts }: HomeProps): JSX.Element {
             </Link>
           ))}
         </div>
-        <button type="button" className={styles.morePostsButton}>
-          Carregar mais posts
-        </button>
+        {nextPage && (
+          <button
+            type="button"
+            className={styles.morePostsButton}
+            onClick={loadNextPage}
+          >
+            Carregar mais posts
+          </button>
+        )}
       </main>
     </>
   );
 }
 
 export const getStaticProps: GetStaticProps = async () => {
-  // const prismic = getPrismicClient({});
-  // const postsResponse = await prismic.getByType(TODO);
-
+  const prismic = getPrismicClient({});
+  const response = await prismic.getByType('post');
   return {
     props: {
-      posts: rawPosts.map(post => ({
-        slug: post.uid,
-        title: post.data.title,
-        subtitle: post.data.subtitle,
-        author: post.data.author,
-        createdAt: post.first_publication_date,
-      })) as FormattedPost[],
+      postsPagination: {
+        next_page: response.next_page,
+        results: response.results,
+      },
     },
     revalidate: 60 * 60, // ONE HOUR
   };
